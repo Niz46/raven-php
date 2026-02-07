@@ -1,0 +1,5 @@
+/vendor/
+/storage/
+/.env
+/public/index.html.orig
+/.DS_Store/

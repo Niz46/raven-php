@@ -1,0 +1,12 @@
+# Apache rewrite to front controller
+Options -MultiViews
+RewriteEngine On
+RewriteBase /
+# If a file or directory exists, serve it directly
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]
+RewriteEngine On
+
+# pretty /login -> /login.php
+RewriteRule ^login/?$ /login.php [L,QSA]
